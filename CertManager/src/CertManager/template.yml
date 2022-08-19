@@ -1,0 +1,114 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: "Certificate manager serverless template."
+Parameters:
+  AcmeEmail:
+    Type: String
+  LetsencryptStaging:
+    Type: String
+    AllowedValues:
+      - 'true'
+      - 'false'
+    Default: 'false'
+
+Globals:
+  Function:
+    Architectures: [arm64]
+    Runtime: dotnet6
+    MemorySize: 256
+    Environment:
+      Variables:
+        ACME_EMAIL:
+          Ref: AcmeEmail
+        LETSENCRYPT_STAGING:
+          Ref: LetsencryptStaging
+        TABLE_ARN: !Ref AcmePendingTokens
+        INSTALLATION_ID: !Select [2, !Split ['/', !Ref 'AWS::StackId']]
+        PARAMETER_PREFIX: !Ref 'AWS::StackName'
+
+Resources:
+  AcmePendingTokens:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: token
+          AttributeType: S
+      KeySchema:
+        - AttributeName: token
+          KeyType: HASH
+      BillingMode: 'PAY_PER_REQUEST'
+  WellKnown:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: CertManager::CertManager.Function::WellKnownHandler
+      Description: "Serve .well-known for ACME"
+      CodeUri: ""
+      Timeout: 30
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                Fn::Sub: "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
+        - DynamoDBReadPolicy:
+            TableName: !Ref AcmePendingTokens
+  AddCertificate:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: CertManager::CertManager.Function::AddCertificate
+      Description: "Provision new http-based ACME certificate"
+      CodeUri: ""
+      Timeout: 300
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - tag:GetResources
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - acm:ImportCertificate
+                - acm:AddTagsToCertificate 
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                Fn::Sub: "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*" 
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AcmePendingTokens
+  RenewCertificate:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: CertManager::CertManager.Function::RenewCertificates
+      Description: "Renew existing http-based ACME certificates"
+      CodeUri: ""
+      Timeout: 300
+      Events:
+        RenewalSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: 'rate(1 day)'
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - tag:GetResources
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - acm:ImportCertificate
+                - acm:AddTagsToCertificate
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource:
+                Fn::Sub: "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AcmePendingTokens

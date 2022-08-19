@@ -1,0 +1,13 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "cert-manager-prod"
+s3_prefix = "cert-manager-prod"
+region = "us-west-2"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+disable_rollback = false
+parameter_overrides = "AcmeEmail=\"maths22@gmail.com\" LetsencryptStaging=\"false\""
+image_repositories = []
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-ojhouiaasdn6"
