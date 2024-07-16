@@ -15,7 +15,7 @@ Parameters:
 Globals:
   Function:
     Architectures: [arm64]
-    Runtime: dotnet6
+    Runtime: dotnet8
     MemorySize: 256
     Environment:
       Variables:
