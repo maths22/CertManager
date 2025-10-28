@@ -9,13 +9,12 @@
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
         <!-- Generate ready to run images during publishing to improve cold start time. -->
         <PublishReadyToRun>true</PublishReadyToRun>
-        <OutputType>Exe</OutputType>
     </PropertyGroup>
     <ItemGroup>
+        <PackageReference Include="Amazon.Lambda.ApiGatewayEvents" Version="2.7.1" />
         <PackageReference Include="Amazon.Lambda.CloudWatchEvents" Version="4.4.0" />
         <PackageReference Include="Amazon.Lambda.Core" Version="2.2.0" />
         <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" Version="2.4.3" />
-        <PackageReference Include="Amazon.Lambda.ApplicationLoadBalancerEvents" Version="2.2.0" />
         <PackageReference Include="AWSSDK.CertificateManager" Version="3.7.301.20" />
         <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.305" />
         <PackageReference Include="AWSSDK.ResourceGroupsTaggingAPI" Version="3.7.300.118" />

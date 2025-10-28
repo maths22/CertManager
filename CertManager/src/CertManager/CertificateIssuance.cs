@@ -1,5 +1,6 @@
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
+using Amazon.Lambda.Core;
 using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
@@ -14,6 +15,7 @@ public class CertificateIssuance
     private readonly AcmeContext _acme;
     private static readonly HttpClient Client = new HttpClient();
     private readonly Table _table;
+    private ILambdaLogger _logger;
 
     public CertificateIssuance(string email, bool staging, IKey accountKey, Table table)
     {
@@ -22,9 +24,10 @@ public class CertificateIssuance
         _table = table;
     }
 
-    public async void Init()
+    public async void Init(ILambdaLogger contextLogger)
     {
         _account = await _acme.NewAccount(_email, true);
+        _logger = contextLogger;
     }
 
     public async Task<(CertificateChain cert, IKey certKey)> OrderCertificate(string[] domains)
@@ -78,14 +81,16 @@ public class CertificateIssuance
                     var body = await res.Content.ReadAsStringAsync();
                     if (!body.Equals(challenge.KeyAuthz))
                     {
+                        _logger.LogInformation($"Expected {challenge.KeyAuthz} but got {body} for {host}");
                         allHappy = false;
                     }
                 }
                 resolved = allHappy;
                 break;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                _logger.LogInformation($"Failed to resolve challenge for {string.Join(", ", hosts)}: {ex.Message}");
                 if (attempts >= 5)
                 {
                     throw;
@@ -95,7 +100,7 @@ public class CertificateIssuance
 
         if (!resolved)
         {
-            throw new Exception($"Endpoint for {challenge.Location.Host} not serving challenge");
+            throw new Exception($"Endpoint not serving challenge");
         }
         
         await challenge.Validate();

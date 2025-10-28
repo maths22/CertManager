@@ -3,7 +3,7 @@ using Amazon.CertificateManager;
 using Amazon.CertificateManager.Model;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DocumentModel;
-using Amazon.Lambda.ApplicationLoadBalancerEvents;
+using Amazon.Lambda.APIGatewayEvents;
 using Amazon.Lambda.CloudWatchEvents.ScheduledEvents;
 using Amazon.Lambda.Core;
 using Amazon.ResourceGroupsTaggingAPI;
@@ -56,15 +56,15 @@ public class Function
         );
     }
 
-    public async Task<ApplicationLoadBalancerResponse> WellKnownHandler(ApplicationLoadBalancerRequest request, ILambdaContext context)
+    public async Task<APIGatewayHttpApiV2ProxyResponse> WellKnownHandler(APIGatewayHttpApiV2ProxyRequest request, ILambdaContext context)
     {
-        var pathParts = request.Path.Split("/");
+        var pathParts = request.RawPath.Split("/");
         var token = pathParts[^1];
-        Console.Out.WriteLine(token);
+        context.Logger.LogInformation($"Fetching token: {token}");
         var data = await _table.GetItemAsync(token);
         if (data == null)
         {
-            return new ApplicationLoadBalancerResponse
+            return new APIGatewayHttpApiV2ProxyResponse
             {
                 StatusCode = 404,
                 Headers = new Dictionary<string, string>
@@ -74,7 +74,7 @@ public class Function
                 Body = "Not found"
             };
         }
-        return new ApplicationLoadBalancerResponse
+        return new APIGatewayHttpApiV2ProxyResponse
         {
             StatusCode = 200,
             Headers = new Dictionary<string, string>
@@ -113,9 +113,9 @@ public class Function
         }
     
         context.Logger.Log($"Provisioning certificate for {certName}");
-        _issuer.Init();
+        _issuer.Init(context.Logger);
         var (cert, certKey) = await _issuer.OrderCertificate(request.Domains);
-        await SaveCert(certName, cert, certKey);
+        await SaveCert(context.Logger, certName, cert, certKey);
     }
 
     public async Task RenewCertificates(ScheduledEvent request, ILambdaContext context)
@@ -132,7 +132,7 @@ public class Function
                 }
             }
         }).ResourceTagMappingList;
-        _issuer.Init();
+        _issuer.Init(context.Logger);
         await foreach (var resourceTagMapping in resources)
         {
 
@@ -157,11 +157,11 @@ public class Function
             var names = certName.Split(":");
             context.Logger.Log($"Renewing certificate for {certName}");
             var (cert, certKey) = await _issuer.OrderCertificate(names);
-            await SaveCert(certName, cert, certKey, resourceTagMapping.ResourceARN);
+            await SaveCert(context.Logger, certName, cert, certKey, resourceTagMapping.ResourceARN);
         }
     }
 
-    private async Task SaveCert(string certName, CertificateChain cert, IKey certKey, string? certArn = null)
+    private async Task SaveCert(ILambdaLogger log, string certName, CertificateChain cert, IKey certKey, string? certArn = null)
     {
         var certParser = new X509CertificateParser();
         var parsedCert = certParser.ReadCertificate(cert.Certificate.ToDer());
@@ -194,6 +194,7 @@ public class Function
                 }
             }
         });
+        log.LogInformation("Imported certificate: " + importRes.CertificateArn);
     }
 
     private static string CertChainOnly(CertificateChain chain)

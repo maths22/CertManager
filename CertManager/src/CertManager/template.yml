@@ -54,7 +54,9 @@ Resources:
               Resource:
                 Fn::Sub: "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
         - DynamoDBReadPolicy:
-            TableName: !Ref AcmePendingTokens
+            TableName: !Ref AcmePendingTokens    
+      FunctionUrlConfig:
+        AuthType:  NONE
   AddCertificate:
     Type: AWS::Serverless::Function
     Properties:
@@ -112,3 +114,9 @@ Resources:
                 Fn::Sub: "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${AWS::StackName}/*"
         - DynamoDBCrudPolicy:
             TableName: !Ref AcmePendingTokens
+
+Outputs:
+  WellKnownUrlEndpoint:
+    Description: "Well-known URL Endpoint"
+    Value:
+      Fn::GetAtt: WellKnownUrl.FunctionUrl
