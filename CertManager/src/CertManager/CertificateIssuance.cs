@@ -52,7 +52,7 @@ public class CertificateIssuance
 
     public async Task<(CertificateChain cert, IKey certKey)> OrderCertificate(string[] domains, string? oldCertId = null)
     {
-        var order = await _acme.NewOrder(domains, null, null, oldCertId);
+        var order = await _acme.NewOrder(domains, null, null, oldCertId, "tlsserver");
         var auths = await order.Authorizations();
         var httpChallenges = await Task.WhenAll(auths.Select(a => a.Http()));
         try
