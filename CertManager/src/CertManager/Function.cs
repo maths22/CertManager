@@ -10,9 +10,9 @@ using Amazon.ResourceGroupsTaggingAPI;
 using Amazon.ResourceGroupsTaggingAPI.Model;
 using Amazon.SimpleSystemsManagement;
 using Amazon.SimpleSystemsManagement.Model;
-using Certes;
-using Certes.Acme;
-using Certes.Pkcs;
+using Certify.ACME.Anvil;
+using Certify.ACME.Anvil.Acme;
+using Org.BouncyCastle.Asn1.X509;
 using Org.BouncyCastle.OpenSsl;
 using Org.BouncyCastle.X509;
 using Tag = Amazon.CertificateManager.Model.Tag;
@@ -113,7 +113,7 @@ public class Function
         }
     
         context.Logger.Log($"Provisioning certificate for {certName}");
-        _issuer.Init(context.Logger);
+        await _issuer.Init(context.Logger);
         var (cert, certKey) = await _issuer.OrderCertificate(request.Domains);
         await SaveCert(context.Logger, certName, cert, certKey);
     }
@@ -132,20 +132,19 @@ public class Function
                 }
             }
         }).ResourceTagMappingList;
-        _issuer.Init(context.Logger);
+        await _issuer.Init(context.Logger);
         await foreach (var resourceTagMapping in resources)
         {
 
-            var expiresAtStr = resourceTagMapping.Tags.Find((t) => t.Key == "ExpiresAt")?.Value;
+            var ariCertId = resourceTagMapping.Tags.Find((t) => t.Key == "ARICertId")?.Value;
 
-            if (expiresAtStr == null)
+            if (ariCertId == null)
             {
-                context.Logger.LogWarning("Found certificate without ExpiresAt: " + resourceTagMapping.ResourceARN);
-                continue;
+                var certInfo = await _acmClient.GetCertificateAsync(resourceTagMapping.ResourceARN);
+                var certParser = new X509CertificateParser();
+                var oldCert = certParser.ReadCertificate(Encoding.ASCII.GetBytes(certInfo.Certificate));
+                ariCertId = ComputeAriCertId(oldCert);
             }
-
-            var expiresAt = DateTime.Parse(expiresAtStr);
-            if (expiresAt >= DateTime.Now.AddDays(30)) continue;
             
             var certName = resourceTagMapping.Tags.Find((t) => t.Key == "Name")?.Value;
             if (certName == null)
@@ -153,12 +152,25 @@ public class Function
                 context.Logger.LogWarning("Found certificate without Name: " + resourceTagMapping.ResourceARN);
                 continue;
             }
+            
+            context.Logger.LogInformation("Checking renewal for cert: " + resourceTagMapping.ResourceARN + " (" + certName + ")");
+
+            if(!await _issuer.ShouldRenew(ariCertId)) continue;
 
             var names = certName.Split(":");
             context.Logger.Log($"Renewing certificate for {certName}");
-            var (cert, certKey) = await _issuer.OrderCertificate(names);
+            var (cert, certKey) = await _issuer.OrderCertificate(names, ariCertId);
             await SaveCert(context.Logger, certName, cert, certKey, resourceTagMapping.ResourceARN);
         }
+    }
+
+    private static string ComputeAriCertId(X509Certificate cert)
+    {
+        var aki = AuthorityKeyIdentifier.GetInstance(cert.GetExtensionParsedValue(X509Extensions.AuthorityKeyIdentifier));
+        var akiB64 = Convert.ToBase64String(aki.KeyIdentifier.GetOctets());
+        var sn = cert.SerialNumber.ToByteArray();
+        var snB64 = Convert.ToBase64String(sn);
+        return $"${akiB64}.${snB64}";
     }
 
     private async Task SaveCert(ILambdaLogger log, string certName, CertificateChain cert, IKey certKey, string? certArn = null)
@@ -189,8 +201,8 @@ public class Function
                 },
                 new Tag
                 {
-                    Key = "ExpiresAt",
-                    Value = parsedCert.NotAfter.ToString("s")
+                    Key = "ARICertID",
+                    Value = ComputeAriCertId(parsedCert)
                 }
             }
         });

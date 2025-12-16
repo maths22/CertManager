@@ -19,6 +19,6 @@
         <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.305" />
         <PackageReference Include="AWSSDK.ResourceGroupsTaggingAPI" Version="3.7.300.118" />
         <PackageReference Include="AWSSDK.SimpleSystemsManagement" Version="3.7.305.9" />
-        <PackageReference Include="Certes" Version="3.0.4" />
+        <PackageReference Include="Webprofusion.Certify.ACME.Anvil" Version="3.3.3" />
     </ItemGroup>
 </Project>

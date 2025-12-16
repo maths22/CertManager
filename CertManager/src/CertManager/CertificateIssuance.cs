@@ -1,16 +1,14 @@
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
 using Amazon.Lambda.Core;
-using Certes;
-using Certes.Acme;
-using Certes.Acme.Resource;
-using Certes.Pkcs;
+using Certify.ACME.Anvil;
+using Certify.ACME.Anvil.Acme;
+using Certify.ACME.Anvil.Acme.Resource;
 
 namespace CertManager;
 
 public class CertificateIssuance
 {
-    private IAccountContext? _account;
     private readonly string _email;
     private readonly AcmeContext _acme;
     private static readonly HttpClient Client = new HttpClient();
@@ -24,15 +22,37 @@ public class CertificateIssuance
         _table = table;
     }
 
-    public async void Init(ILambdaLogger contextLogger)
+    public async Task Init(ILambdaLogger contextLogger)
     {
-        _account = await _acme.NewAccount(_email, true);
+        await _acme.NewAccount(_email, true);
         _logger = contextLogger;
     }
 
-    public async Task<(CertificateChain cert, IKey certKey)> OrderCertificate(string[] domains)
+    public async Task<bool> ShouldRenew(string certId)
     {
-        var order = await _acme.NewOrder(domains);
+        var renewalInfo = await _acme.GetRenewalInfo(certId);
+        if (!renewalInfo.SuggestedWindow.Start.HasValue || !renewalInfo.SuggestedWindow.End.HasValue)
+        {
+            // per the specs this should never happen
+            _logger.LogInformation("No renewal window suggested");
+            return false;
+        }
+        if (renewalInfo.ExplanationURL != null)
+        {
+            _logger.LogInformation($"Renewal Explanation: {renewalInfo.ExplanationURL}");
+        }
+        var difference = renewalInfo.SuggestedWindow.End.Value.Subtract(renewalInfo.SuggestedWindow.Start.Value);
+        var now = DateTimeOffset.UtcNow;
+        var randomSlot = new Random().NextDouble();
+        var scheduledRenewalTime = renewalInfo.SuggestedWindow.Start.Value.AddSeconds(difference.TotalSeconds * randomSlot);
+        _logger.LogInformation($"Current time: {now}, scheduled renewal time: {scheduledRenewalTime}");
+        // Add one day to account for slots scheduled in the next 24 hours
+        return scheduledRenewalTime < now.AddDays(1);
+    }
+
+    public async Task<(CertificateChain cert, IKey certKey)> OrderCertificate(string[] domains, string? oldCertId = null)
+    {
+        var order = await _acme.NewOrder(domains, null, null, oldCertId);
         var auths = await order.Authorizations();
         var httpChallenges = await Task.WhenAll(auths.Select(a => a.Http()));
         try
