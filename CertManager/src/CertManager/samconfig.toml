@@ -11,3 +11,12 @@ disable_rollback = false
 parameter_overrides = "AcmeEmail=\"maths22@gmail.com\" LetsencryptStaging=\"false\""
 image_repositories = []
 s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-ctdbhr2bwypv"
+
+[staging.deploy.parameters]
+stack_name = "cert-manager-staging"
+resolve_s3 = true
+s3_prefix = "cert-manager-staging"
+region = "us-east-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "AcmeEmail=\"maths22@gmail.com\" LetsencryptStaging=\"true\""
+image_repositories = []

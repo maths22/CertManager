@@ -74,7 +74,7 @@ Resources:
             - Effect: Allow
               Action:
                 - acm:ImportCertificate
-                - acm:AddTagsToCertificate 
+                - acm:AddTagsToCertificate
               Resource: '*'
             - Effect: Allow
               Action:
@@ -106,6 +106,7 @@ Resources:
               Action:
                 - acm:ImportCertificate
                 - acm:AddTagsToCertificate
+                - acm:GetCertificate
               Resource: '*'
             - Effect: Allow
               Action:

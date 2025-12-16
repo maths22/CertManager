@@ -167,28 +167,24 @@ public class Function
     private static string ComputeAriCertId(X509Certificate cert)
     {
         var aki = AuthorityKeyIdentifier.GetInstance(cert.GetExtensionParsedValue(X509Extensions.AuthorityKeyIdentifier));
-        var akiB64 = Convert.ToBase64String(aki.KeyIdentifier.GetOctets());
+        var akiB64 = Convert.ToBase64String(aki.KeyIdentifier.GetOctets()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var sn = cert.SerialNumber.ToByteArray();
-        var snB64 = Convert.ToBase64String(sn);
-        return $"${akiB64}.${snB64}";
+        var snB64 = Convert.ToBase64String(sn).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        return $"{akiB64}.{snB64}";
     }
 
     private async Task SaveCert(ILambdaLogger log, string certName, CertificateChain cert, IKey certKey, string? certArn = null)
     {
         var certParser = new X509CertificateParser();
         var parsedCert = certParser.ReadCertificate(cert.Certificate.ToDer());
+        var ariCertId = ComputeAriCertId(parsedCert);
         var importRes = await _acmClient.ImportCertificateAsync(new ImportCertificateRequest
         {
             CertificateArn = certArn,
             Certificate = new MemoryStream(Encoding.UTF8.GetBytes(cert.Certificate.ToPem())),
             CertificateChain = new MemoryStream(Encoding.UTF8.GetBytes(CertChainOnly(cert))),
-            PrivateKey = new MemoryStream(Encoding.UTF8.GetBytes(certKey.ToPem()))
-        });
-        await _acmClient.AddTagsToCertificateAsync(new AddTagsToCertificateRequest
-        {
-            CertificateArn = importRes.CertificateArn,
-            Tags =
-            {
+            PrivateKey = new MemoryStream(Encoding.UTF8.GetBytes(certKey.ToPem())),
+            Tags = {
                 new Tag
                 {
                     Key = "CreatedBy",
@@ -202,7 +198,7 @@ public class Function
                 new Tag
                 {
                     Key = "ARICertID",
-                    Value = ComputeAriCertId(parsedCert)
+                    Value = ariCertId
                 }
             }
         });
